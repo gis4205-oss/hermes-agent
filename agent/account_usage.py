@@ -28,7 +28,7 @@ class AccountUsageSnapshot:
     provider: str
     source: str
     fetched_at: datetime
-    title: str = "Account limits"
+    title: str = "계정 한도"
     plan: Optional[str] = None
     windows: tuple[AccountUsageWindow, ...] = ()
     details: tuple[str, ...] = ()
@@ -51,6 +51,24 @@ def _title_case_slug(value: Optional[str]) -> Optional[str]:
     if not cleaned:
         return None
     return cleaned.replace("_", " ").replace("-", " ").title()
+
+
+def _localize_window_label(label: Optional[str]) -> str:
+    raw = str(label or "").strip()
+    if not raw:
+        return "사용량"
+    mapping = {
+        "session": "세션",
+        "week": "주간",
+        "weekly": "주간",
+        "day": "일간",
+        "daily": "일간",
+        "hour": "시간",
+        "hourly": "시간",
+        "month": "월간",
+        "monthly": "월간",
+    }
+    return mapping.get(raw.lower(), raw)
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -84,11 +102,11 @@ def _format_reset(dt: Optional[datetime]) -> str:
     minutes = rem // 60
     if hours >= 24:
         days, hours = divmod(hours, 24)
-        rel = f"in {days}d {hours}h"
+        rel = f"{days}일 {hours}시간 후"
     elif hours > 0:
-        rel = f"in {hours}h {minutes}m"
+        rel = f"{hours}시간 {minutes}분 후"
     else:
-        rel = f"in {minutes}m"
+        rel = f"{minutes}분 후"
     return f"{rel} ({local_dt.strftime('%Y-%m-%d %H:%M %Z')})"
 
 
@@ -98,25 +116,26 @@ def render_account_usage_lines(snapshot: Optional[AccountUsageSnapshot], *, mark
     header = f"📈 {'**' if markdown else ''}{snapshot.title}{'**' if markdown else ''}"
     lines = [header]
     if snapshot.plan:
-        lines.append(f"Provider: {snapshot.provider} ({snapshot.plan})")
+        lines.append(f"제공자: {snapshot.provider} ({snapshot.plan})")
     else:
-        lines.append(f"Provider: {snapshot.provider}")
+        lines.append(f"제공자: {snapshot.provider}")
     for window in snapshot.windows:
+        label = _localize_window_label(window.label)
         if window.used_percent is None:
-            base = f"{window.label}: unavailable"
+            base = f"{label}: 사용량 정보를 확인할 수 없음"
         else:
             remaining = max(0, round(100 - float(window.used_percent)))
             used = max(0, round(float(window.used_percent)))
-            base = f"{window.label}: {remaining}% remaining ({used}% used)"
+            base = f"{label}: {remaining}% 남음 ({used}% 사용)"
         if window.reset_at:
-            base += f" • resets {_format_reset(window.reset_at)}"
+            base += f" • 초기화 {_format_reset(window.reset_at)}"
         elif window.detail:
             base += f" • {window.detail}"
         lines.append(base)
     for detail in snapshot.details:
         lines.append(detail)
     if snapshot.unavailable_reason:
-        lines.append(f"Unavailable: {snapshot.unavailable_reason}")
+        lines.append(f"확인 불가: {snapshot.unavailable_reason}")
     return lines
 
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from cli import HermesCLI
+from cli import HermesCLI, format_duration_compact
 from agent.account_usage import AccountUsageSnapshot
 
 
@@ -98,9 +98,41 @@ class TestCLIStatusBar:
         assert "12.4K/200K" in text
         assert "6%" in text
         assert "$0.06" not in text  # cost hidden by default
-        assert "15m" in text
-        assert "Σ 12.4K" in text
-        assert "calls 7" in text
+        assert "15분" in text
+        assert "🧮 총 12.4K" in text
+        assert "🤖 호출 7" in text
+        assert "📥 입력 10.2K" in text
+        assert "📤 출력 2.22K" in text
+
+    def test_account_usage_window_labels_prefer_korean(self):
+        cli_obj = _make_cli()
+
+        assert cli_obj._format_account_usage_window_label("Session") == "세션"
+        assert cli_obj._format_account_usage_window_label("Weekly") == "주간"
+        assert cli_obj._format_account_usage_window_label("hour", compact=True) == "시간"
+        assert cli_obj._format_account_usage_window_label(None) == "사용량"
+
+    def test_duration_format_prefers_korean_units(self):
+        assert format_duration_compact(45) == "45초"
+        assert format_duration_compact(15 * 60) == "15분"
+        assert format_duration_compact(2 * 3600 + 5 * 60) == "2시간 5분"
+        assert format_duration_compact(7 * 86400) == "7일"
+
+    def test_account_usage_reset_hint_prefers_korean_units(self):
+        cli_obj = _make_cli()
+        now = datetime.now()
+
+        assert cli_obj._format_account_usage_reset_hint(now - timedelta(seconds=5)) == "지금"
+        assert cli_obj._format_account_usage_reset_hint(now + timedelta(minutes=18)) == "18분"
+        assert cli_obj._format_account_usage_reset_hint(now + timedelta(hours=3)) == "3시간"
+        assert cli_obj._format_account_usage_reset_hint(now + timedelta(days=2)) == "2일"
+
+    def test_prompt_elapsed_prefers_korean_units(self):
+        frozen = HermesCLI._format_prompt_elapsed(None, 65.0, live=False)
+        live = HermesCLI._format_prompt_elapsed(None, 3661.0, live=True)
+
+        assert frozen == "⏲ 1분 5초"
+        assert live == "⏱ 1시간 1분 1초"
 
     def test_post_compression_sentinel_does_not_render_negative(self):
         """Right after a compression, last_prompt_tokens is parked at the -1
@@ -242,7 +274,7 @@ class TestCLIStatusBar:
         assert len(lines) == 2
         assert "⚕" in text
         assert "$0.06" not in text  # cost hidden by default
-        assert "15m" in text
+        assert "15분" in text
         assert "200K" not in text
 
     def test_build_status_bar_text_handles_missing_agent(self):
@@ -643,14 +675,14 @@ class TestCLIUsageReport:
         cli_obj._show_usage()
         output = capsys.readouterr().out
 
-        assert "Model:" in output
-        assert "Cost status:" in output
-        assert "Cost source:" in output
-        assert "Total cost:" in output
+        assert "모델:" in output
+        assert "비용 상태:" in output
+        assert "비용 출처:" in output
+        assert "총 비용:" in output
         assert "$" in output
         assert "0.064" in output
-        assert "Session duration:" in output
-        assert "Compressions:" in output
+        assert "세션 시간:" in output
+        assert "압축 횟수:" in output
 
     def test_show_usage_marks_unknown_pricing(self, capsys):
         cli_obj = _attach_agent(
@@ -667,9 +699,9 @@ class TestCLIUsageReport:
         cli_obj._show_usage()
         output = capsys.readouterr().out
 
-        assert "Total cost:" in output
+        assert "총 비용:" in output
         assert "n/a" in output
-        assert "Pricing unknown for local/my-custom-model" in output
+        assert "local/my-custom-model 모델의 가격 정보를 알 수 없습니다" in output
 
     def test_zero_priced_provider_models_stay_unknown(self, capsys):
         cli_obj = _attach_agent(
@@ -686,9 +718,9 @@ class TestCLIUsageReport:
         cli_obj._show_usage()
         output = capsys.readouterr().out
 
-        assert "Total cost:" in output
+        assert "총 비용:" in output
         assert "n/a" in output
-        assert "Pricing unknown for glm-5" in output
+        assert "glm-5 모델의 가격 정보를 알 수 없습니다" in output
 
     def test_status_bar_wraps_without_ellipsis_when_width_is_tight(self):
         cli_obj = _make_cli(model="anthropic/claude-sonnet-4-20250514")
@@ -721,9 +753,42 @@ class TestCLIUsageReport:
 
         assert "..." not in text
         assert "📈" in text
+        assert "세션" in text
+        assert "주간" in text
         assert "🗜️ 1" in text
         for line in text.splitlines():
             assert cli_obj._status_bar_display_width(line) <= 44
+
+    def test_status_bar_loading_label_is_korean(self):
+        cli_obj = _make_cli(model="anthropic/claude-sonnet-4-20250514")
+        cli_obj._status_bar_visible = True
+        cli_obj._get_status_bar_snapshot = lambda: {
+            "model_name": "anthropic/claude-sonnet-4-20250514",
+            "model_short": "claude-sonnet-4-20250514",
+            "duration": "2h",
+            "prompt_elapsed": "⏲ 3m",
+            "context_percent": 33,
+            "context_length": 200_000,
+            "context_tokens": 66_000,
+            "compressions": 0,
+            "active_background_tasks": 0,
+            "active_background_processes": 0,
+            "account_usage_primary_label": None,
+            "account_usage_primary_remaining": None,
+            "account_usage_primary_reset_hint": None,
+            "account_usage_primary_reset_clock": None,
+            "account_usage_secondary_label": None,
+            "account_usage_secondary_remaining": None,
+            "account_usage_secondary_reset_hint": None,
+            "account_usage_credits_label": None,
+            "account_usage_credits_compact_label": None,
+            "account_usage_risk_level": None,
+            "account_usage_loading": True,
+        }
+
+        text = cli_obj._build_status_bar_text(width=100)
+
+        assert "📈 불러오는 중..." in text
 
     def test_status_bar_height_tracks_multiline_wrap(self):
         cli_obj = _make_cli()

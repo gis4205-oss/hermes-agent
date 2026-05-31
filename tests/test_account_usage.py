@@ -112,9 +112,11 @@ def test_render_account_usage_lines_includes_reset_and_provider():
     )
     lines = render_account_usage_lines(snapshot)
 
-    assert lines[0] == "📈 Account limits"
+    assert lines[0] == "📈 계정 한도"
     assert "openai-codex (Pro)" in lines[1]
-    assert "Session: 75% remaining (25% used)" in lines[2]
+    assert lines[1].startswith("제공자: ")
+    assert "세션: 75% 남음 (25% 사용)" in lines[2]
+    assert "초기화 " in lines[2]
     assert "Credits balance: $9.99" in lines[3]
 
 

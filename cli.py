@@ -104,16 +104,20 @@ def estimate_usage_cost(*args, **kwargs):
 def format_duration_compact(*args, **kwargs):
     seconds = float(args[0] if args else kwargs.get("seconds", 0.0))
     if seconds < 60:
-        return f"{seconds:.0f}s"
+        return f"{seconds:.0f}초"
     minutes = seconds / 60
     if minutes < 60:
-        return f"{minutes:.0f}m"
+        return f"{minutes:.0f}분"
     hours = minutes / 60
     if hours < 24:
         remaining_min = int(minutes % 60)
-        return f"{int(hours)}h {remaining_min}m" if remaining_min else f"{int(hours)}h"
+        return f"{int(hours)}시간 {remaining_min}분" if remaining_min else f"{int(hours)}시간"
     days = hours / 24
-    return f"{days:.1f}d"
+    whole_days = int(days)
+    fractional = days - whole_days
+    if fractional < 0.05:
+        return f"{whole_days}일"
+    return f"{days:.1f}일"
 
 
 def format_token_count_compact(*args, **kwargs):
@@ -3726,18 +3730,18 @@ class HermesCLI:
     def _format_prompt_elapsed(prompt_start_time: Optional[float], prompt_duration: float, live: bool = False) -> str:
         """Format per-prompt elapsed time for the status bar.
 
-        Always returns a string — shows 0s on fresh start before first turn.
+        Always returns a string — shows 0초 on fresh start before first turn.
         Keeps seconds visible at all scales so it increments smoothly:
-            59s → 1m → 1m 1s → ... → 1m 59s → 2m → 2m 1s → ...
-            59m 59s → 1h → 1h 0m 1s → ...
-            23h 59m 59s → 1d → 1d 0h 1m → ...
+            59초 → 1분 → 1분 1초 → ... → 1분 59초 → 2분 → 2분 1초 → ...
+            59분 59초 → 1시간 → 1시간 0분 1초 → ...
+            23시간 59분 59초 → 1일 → 1일 0시간 1분 → ...
 
         Emoji prefix: ⏱ when turn is live, ⏲ when frozen or fresh start.
         Uses width-1 (no variation selector) glyphs so the status bar stays
         aligned in monospace terminals.
         """
         if prompt_start_time is None and prompt_duration == 0.0:
-            return "⏲ 0s"
+            return "⏲ 0초"
         elapsed = time.time() - prompt_start_time if prompt_start_time is not None else prompt_duration
         elapsed = max(0.0, elapsed)
 
@@ -3749,13 +3753,13 @@ class HermesCLI:
         seconds = int(remaining % 60)
 
         if days > 0:
-            time_str = f"{days}d {hours}h {minutes}m"
+            time_str = f"{days}일 {hours}시간 {minutes}분"
         elif hours > 0:
-            time_str = f"{hours}h {minutes}m {seconds}s" if seconds else f"{hours}h {minutes}m"
+            time_str = f"{hours}시간 {minutes}분 {seconds}초" if seconds else f"{hours}시간 {minutes}분"
         elif minutes > 0:
-            time_str = f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
+            time_str = f"{minutes}분 {seconds}초" if seconds else f"{minutes}분"
         else:
-            time_str = f"{int(elapsed)}s"
+            time_str = f"{int(elapsed)}초"
 
         emoji = "⏱" if live else "⏲"
         return f"{emoji} {time_str}"
@@ -3917,41 +3921,41 @@ class HermesCLI:
         """Normalize account-usage window labels for the status bar."""
         raw = str(label or "").strip()
         if not raw:
-            return "Usage"
+            return "사용량"
         key = raw.lower()
         full_map = {
-            "session": "Session",
-            "week": "Week",
-            "weekly": "Week",
-            "day": "Day",
-            "daily": "Day",
-            "hour": "Hour",
-            "hourly": "Hour",
-            "month": "Month",
-            "monthly": "Month",
+            "session": "세션",
+            "week": "주간",
+            "weekly": "주간",
+            "day": "일간",
+            "daily": "일간",
+            "hour": "시간",
+            "hourly": "시간",
+            "month": "월간",
+            "monthly": "월간",
         }
         compact_map = {
-            "session": "Sess",
-            "week": "Wk",
-            "weekly": "Wk",
-            "day": "Day",
-            "daily": "Day",
-            "hour": "Hr",
-            "hourly": "Hr",
-            "month": "Mo",
-            "monthly": "Mo",
+            "session": "세션",
+            "week": "주간",
+            "weekly": "주간",
+            "day": "일간",
+            "daily": "일간",
+            "hour": "시간",
+            "hourly": "시간",
+            "month": "월간",
+            "monthly": "월간",
         }
         mapping = compact_map if compact else full_map
         if key in mapping:
             return mapping[key]
         cleaned = raw.split()[0].strip().rstrip(":")
-        if compact:
-            return cleaned[:4].title() if cleaned else "Usage"
-        return cleaned.title() if cleaned else "Usage"
+        if cleaned:
+            return cleaned
+        return "사용량"
 
     @staticmethod
     def _format_account_usage_reset_hint(reset_at) -> Optional[str]:
-        """Return a tiny relative reset hint like 18m, 3h, or 2d."""
+        """Return a tiny relative reset hint like 18분, 3시간, or 2일."""
         if not reset_at:
             return None
         try:
@@ -3959,15 +3963,15 @@ class HermesCLI:
         except Exception:
             return None
         if delta_seconds <= 0:
-            return "now"
+            return "지금"
         if delta_seconds < 3600:
             minutes = max(1, round(delta_seconds / 60))
-            return f"{minutes}m"
+            return f"{minutes}분"
         if delta_seconds < 86400:
             hours = max(1, round(delta_seconds / 3600))
-            return f"{hours}h"
+            return f"{hours}시간"
         days = max(1, round(delta_seconds / 86400))
-        return f"{days}d"
+        return f"{days}일"
 
     @staticmethod
     def _format_account_usage_reset_clock(reset_at) -> Optional[str]:
@@ -4252,7 +4256,12 @@ class HermesCLI:
 
     @staticmethod
     def _format_status_bar_token_summary(snapshot: Dict[str, Any], *, compact: bool = False) -> str:
-        """Return a compact session-token summary for the footer."""
+        """Return a readable session-token summary for the footer.
+
+        Use Korean labels plus intuitive emojis so the footer reads naturally
+        for the user without having to decode symbolic shorthand like ``Σ`` or
+        bare English abbreviations.
+        """
         input_tokens = int(snapshot.get("session_input_tokens", 0) or 0)
         output_tokens = int(snapshot.get("session_output_tokens", 0) or 0)
         total_tokens = int(snapshot.get("session_total_tokens", 0) or 0)
@@ -4263,28 +4272,28 @@ class HermesCLI:
         parts: list[str] = []
         if compact:
             if total_tokens > 0:
-                parts.append(f"Σ {format_token_count_compact(total_tokens)}")
+                parts.append(f"🧮 총 {format_token_count_compact(total_tokens)}")
             if api_calls > 0:
-                parts.append(f"calls {api_calls}")
-            if input_tokens > 0 or output_tokens > 0:
-                parts.append(
-                    f"↕ {format_token_count_compact(input_tokens)}/{format_token_count_compact(output_tokens)}"
-                )
+                parts.append(f"🤖 호출 {api_calls}")
+            if input_tokens > 0:
+                parts.append(f"📥 입력 {format_token_count_compact(input_tokens)}")
+            if output_tokens > 0:
+                parts.append(f"📤 출력 {format_token_count_compact(output_tokens)}")
             return " · ".join(parts)
 
         if input_tokens > 0:
-            parts.append(f"in {format_token_count_compact(input_tokens)}")
+            parts.append(f"📥 입력 {format_token_count_compact(input_tokens)}")
         if output_tokens > 0:
-            parts.append(f"out {format_token_count_compact(output_tokens)}")
+            parts.append(f"📤 출력 {format_token_count_compact(output_tokens)}")
         if total_tokens > 0:
-            parts.append(f"Σ {format_token_count_compact(total_tokens)}")
+            parts.append(f"🧮 총 {format_token_count_compact(total_tokens)}")
         if cache_read_tokens > 0 or cache_write_tokens > 0:
             parts.append(
-                f"cache {format_token_count_compact(cache_read_tokens)}/{format_token_count_compact(cache_write_tokens)}"
+                f"🗃 캐시 {format_token_count_compact(cache_read_tokens)}/{format_token_count_compact(cache_write_tokens)}"
             )
         if api_calls > 0:
-            parts.append(f"calls {api_calls}")
-        return "↕ " + " · ".join(parts) if parts else ""
+            parts.append(f"🤖 API 호출 {api_calls}")
+        return " · ".join(parts) if parts else ""
 
     @staticmethod
     def _get_tui_terminal_width(default: tuple[int, int] = (80, 24)) -> int:
@@ -4503,14 +4512,14 @@ class HermesCLI:
                 account_usage_bits.append(f"💳 {account_usage_credits_compact_label}")
             if account_usage_warning_marker and account_usage_bits:
                 account_usage_bits.append(account_usage_warning_marker)
-            account_usage_label = f"📈 {' '.join(account_usage_bits)}" if account_usage_bits else ("📈 loading..." if account_usage_loading else "")
+            account_usage_label = f"📈 {' '.join(account_usage_bits)}" if account_usage_bits else ("📈 불러오는 중..." if account_usage_loading else "")
 
             if snapshot["context_length"]:
                 ctx_total = _format_context_length(snapshot["context_length"])
                 ctx_used = format_token_count_compact(snapshot["context_tokens"])
                 context_label = f"{ctx_used}/{ctx_total}"
             else:
-                context_label = "ctx --"
+                context_label = "문맥 --"
 
             compressions = snapshot.get("compressions", 0)
             bg_count = snapshot.get("active_background_tasks", 0)
@@ -4531,7 +4540,7 @@ class HermesCLI:
                 if bg_proc_count:
                     aux_parts.append(f"⚙ {bg_proc_count}")
                 if yolo_active:
-                    aux_parts.append("⚠ YOLO")
+                    aux_parts.append("⚠ 승인생략")
                 return self._merge_status_bar_line_groups([
                     self._wrap_status_bar_parts(header_parts, " · ", width),
                     usage_lines,
@@ -4554,7 +4563,7 @@ class HermesCLI:
                 if bg_proc_count:
                     detail_parts.append(f"⚙ {bg_proc_count}")
                 if yolo_active:
-                    detail_parts.append("⚠ YOLO")
+                    detail_parts.append("⚠ 승인생략")
                 return self._join_status_bar_line_groups([
                     self._wrap_status_bar_parts(header_parts, " · ", width),
                     self._wrap_status_bar_parts(detail_parts, " · ", width),
@@ -4577,7 +4586,7 @@ class HermesCLI:
             if bg_proc_count:
                 detail_parts.append(f"⚙ {bg_proc_count}")
             if yolo_active:
-                detail_parts.append("⚠ YOLO")
+                detail_parts.append("⚠ 승인생략")
             if not detail_parts and token_summary_compact:
                 detail_parts.append(token_summary_compact)
             return self._join_status_bar_line_groups([
@@ -4635,7 +4644,7 @@ class HermesCLI:
                 ]
                 if yolo_active:
                     frags.append(("class:status-bar-dim", " · "))
-                    frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                    frags.append(("class:status-bar-yolo", "⚠ 승인생략"))
                 frags.append(("class:status-bar", " "))
             else:
                 percent = snapshot["context_percent"]
@@ -4669,7 +4678,7 @@ class HermesCLI:
                             frags.append((account_usage_warning_style, account_usage_warning_marker))
                     elif account_usage_loading:
                         frags.append(("class:status-bar-dim", " · "))
-                        frags.append(("class:status-bar-dim", "📈 loading..."))
+                        frags.append(("class:status-bar-dim", "📈 불러오는 중..."))
                     if compressions:
                         frags.append(("class:status-bar-dim", " · "))
                         frags.append((self._compression_count_style(compressions), f"🗜️ {compressions}"))
@@ -4685,7 +4694,7 @@ class HermesCLI:
                     ])
                     if yolo_active:
                         frags.append(("class:status-bar-dim", " · "))
-                        frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                        frags.append(("class:status-bar-yolo", "⚠ 승인생략"))
                     frags.append(("class:status-bar", " "))
                 else:
                     if snapshot["context_length"]:
@@ -4693,7 +4702,7 @@ class HermesCLI:
                         ctx_used = format_token_count_compact(snapshot["context_tokens"])
                         context_label = f"{ctx_used}/{ctx_total}"
                     else:
-                        context_label = "ctx --"
+                        context_label = "문맥 --"
 
                     bar_style = self._status_bar_context_style(percent)
                     compressions = snapshot.get("compressions", 0)
@@ -4730,7 +4739,7 @@ class HermesCLI:
                             frags.append((account_usage_warning_style, account_usage_warning_marker))
                     elif account_usage_loading:
                         frags.append(("class:status-bar-dim", " │ "))
-                        frags.append(("class:status-bar-dim", "📈 loading..."))
+                        frags.append(("class:status-bar-dim", "📈 불러오는 중..."))
                     if compressions:
                         frags.append(("class:status-bar-dim", " │ "))
                         frags.append((self._compression_count_style(compressions), f"🗜️ {compressions}"))
@@ -4751,7 +4760,7 @@ class HermesCLI:
                         frags.append(("class:status-bar-dim", prompt_elapsed))
                     if yolo_active:
                         frags.append(("class:status-bar-dim", " │ "))
-                        frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                        frags.append(("class:status-bar-yolo", "⚠ 승인생략"))
                     frags.append(("class:status-bar", " "))
 
             total_width = sum(self._status_bar_display_width(text) for _, text in frags)
@@ -9478,7 +9487,7 @@ class HermesCLI:
                         session_id=self.session_id,
                         context_length=ctx_len,
                     )
-                _cprint("  ✨ (◕‿◕)✨ Fresh start! Screen cleared and conversation reset.\n")
+                _cprint("  ✨ (◕‿◕)✨ 새로 시작했습니다! 화면을 지우고 대화를 초기화했어요.\n")
                 # Show a random tip on new session
                 try:
                     from hermes_cli.tips import get_random_tip
@@ -9488,12 +9497,12 @@ class HermesCLI:
                         _tip_color = get_active_skin().get_color("banner_dim", "#B8860B")
                     except Exception:
                         _tip_color = "#B8860B"
-                    cc.print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
+                    cc.print(f"[dim {_tip_color}]✦ 팁: {_tip}[/]")
                 except Exception:
                     pass
             else:
                 self.show_banner()
-                print("  ✨ (◕‿◕)✨ Fresh start! Screen cleared and conversation reset.\n")
+                print("  ✨ (◕‿◕)✨ 새로 시작했습니다! 화면을 지우고 대화를 초기화했어요.\n")
                 # Show a random tip on new session
                 try:
                     from hermes_cli.tips import get_random_tip
@@ -9503,7 +9512,7 @@ class HermesCLI:
                         _tip_color = get_active_skin().get_color("banner_dim", "#B8860B")
                     except Exception:
                         _tip_color = "#B8860B"
-                    self._console_print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
+                    self._console_print(f"[dim {_tip_color}]✦ 팁: {_tip}[/]")
                 except Exception:
                     pass
         elif canonical == "history":
@@ -11180,14 +11189,14 @@ class HermesCLI:
     def _show_usage(self):
         """Show rate limits (if available) and session token usage."""
         if not self.agent:
-            print("(._.) No active agent -- send a message first.")
+            print("(._.) 활성 에이전트가 없습니다. 먼저 메시지를 보내주세요.")
             return
 
         agent = self.agent
         calls = agent.session_api_calls
 
         if calls == 0:
-            print("(._.) No API calls made yet in this session.")
+            print("(._.) 이 세션에서는 아직 API 호출이 없습니다.")
             return
 
         # ── Rate limits (shown first when available) ────────────────
@@ -11228,35 +11237,35 @@ class HermesCLI:
         )
         elapsed = format_duration_compact((datetime.now() - self.session_start).total_seconds())
 
-        print("  📊 Session Token Usage")
+        print("  📊 세션 토큰 사용량")
         print(f"  {'─' * 40}")
-        print(f"  Model:                     {agent.model}")
-        print(f"  Input tokens:              {input_tokens:>10,}")
-        print(f"  Cache read tokens:         {cache_read_tokens:>10,}")
-        print(f"  Cache write tokens:        {cache_write_tokens:>10,}")
-        print(f"  Output tokens:             {output_tokens:>10,}")
+        print(f"  모델:                     {agent.model}")
+        print(f"  입력 토큰:                {input_tokens:>10,}")
+        print(f"  캐시 읽기 토큰:           {cache_read_tokens:>10,}")
+        print(f"  캐시 쓰기 토큰:           {cache_write_tokens:>10,}")
+        print(f"  출력 토큰:                {output_tokens:>10,}")
         if reasoning_tokens:
-            print(f"  ↳ Reasoning (subset):      {reasoning_tokens:>10,}")
-        print(f"  Prompt tokens (total):     {prompt:>10,}")
-        print(f"  Completion tokens:         {completion:>10,}")
-        print(f"  Total tokens:              {total:>10,}")
-        print(f"  API calls:                 {calls:>10,}")
-        print(f"  Session duration:          {elapsed:>10}")
-        print(f"  Cost status:              {cost_result.status:>10}")
-        print(f"  Cost source:              {cost_result.source:>10}")
+            print(f"  ↳ 추론 토큰(부분집합):     {reasoning_tokens:>10,}")
+        print(f"  프롬프트 토큰(합계):       {prompt:>10,}")
+        print(f"  완료 토큰:                {completion:>10,}")
+        print(f"  총 토큰:                  {total:>10,}")
+        print(f"  API 호출:                 {calls:>10,}")
+        print(f"  세션 시간:                {elapsed:>10}")
+        print(f"  비용 상태:               {cost_result.status:>10}")
+        print(f"  비용 출처:               {cost_result.source:>10}")
         if cost_result.amount_usd is not None:
             prefix = "~" if cost_result.status == "estimated" else ""
-            print(f"  Total cost:              {prefix}${float(cost_result.amount_usd):>10.4f}")
+            print(f"  총 비용:                 {prefix}${float(cost_result.amount_usd):>10.4f}")
         elif cost_result.status == "included":
-            print(f"  Total cost:              {'included':>10}")
+            print(f"  총 비용:                 {'included':>10}")
         else:
-            print(f"  Total cost:              {'n/a':>10}")
+            print(f"  총 비용:                 {'n/a':>10}")
         print(f"  {'─' * 40}")
-        print(f"  Current context:  {last_prompt:,} / {ctx_len:,} ({pct:.0f}%)")
-        print(f"  Messages:         {msg_count}")
-        print(f"  Compressions:     {compressions}")
+        print(f"  현재 문맥:      {last_prompt:,} / {ctx_len:,} ({pct:.0f}%)")
+        print(f"  메시지 수:      {msg_count}")
+        print(f"  압축 횟수:      {compressions}")
         if cost_result.status == "unknown":
-            print(f"  Note:             Pricing unknown for {agent.model}")
+            print(f"  참고:           {agent.model} 모델의 가격 정보를 알 수 없습니다")
 
         # Account limits -- fetched off-thread with a hard timeout so slow
         # provider APIs don't hang the prompt.
@@ -13748,10 +13757,10 @@ class HermesCLI:
         try:
             from hermes_cli.skin_engine import get_active_skin
             _welcome_skin = get_active_skin()
-            _welcome_text = _welcome_skin.get_branding("welcome", "Welcome to Hermes Agent! Type your message or /help for commands.")
+            _welcome_text = _welcome_skin.get_branding("welcome", "Hermes Agent에 오신 것을 환영합니다! 메시지를 입력하거나 /help로 명령어를 확인하세요.")
             _welcome_color = _welcome_skin.get_color("banner_text", "#FFF8DC")
         except Exception:
-            _welcome_text = "Welcome to Hermes Agent! Type your message or /help for commands."
+            _welcome_text = "Hermes Agent에 오신 것을 환영합니다! 메시지를 입력하거나 /help로 명령어를 확인하세요."
             _welcome_color = "#FFF8DC"
         self._console_print(f"[{_welcome_color}]{_welcome_text}[/]")
 
@@ -13804,7 +13813,7 @@ class HermesCLI:
                 _tip_color = _welcome_skin.get_color("banner_dim", "#B8860B")
             except Exception:
                 _tip_color = "#B8860B"
-            self._console_print(f"[dim {_tip_color}]✦ Tip: {_tip}[/]")
+            self._console_print(f"[dim {_tip_color}]✦ 팁: {_tip}[/]")
         except Exception:
             pass  # Tips are non-critical — never break startup
 
