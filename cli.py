@@ -103,21 +103,29 @@ def estimate_usage_cost(*args, **kwargs):
 
 def format_duration_compact(*args, **kwargs):
     seconds = float(args[0] if args else kwargs.get("seconds", 0.0))
+    lang = get_language()
     if seconds < 60:
-        return f"{seconds:.0f}초"
+        return t("status_bar.duration.seconds", lang=lang, count=round(seconds))
     minutes = seconds / 60
     if minutes < 60:
-        return f"{minutes:.0f}분"
+        return t("status_bar.duration.minutes", lang=lang, count=round(minutes))
     hours = minutes / 60
     if hours < 24:
         remaining_min = int(minutes % 60)
-        return f"{int(hours)}시간 {remaining_min}분" if remaining_min else f"{int(hours)}시간"
+        if remaining_min:
+            return t(
+                "status_bar.duration.hours_minutes",
+                lang=lang,
+                hours=int(hours),
+                minutes=remaining_min,
+            )
+        return t("status_bar.duration.hours", lang=lang, count=int(hours))
     days = hours / 24
     whole_days = int(days)
     fractional = days - whole_days
     if fractional < 0.05:
-        return f"{whole_days}일"
-    return f"{days:.1f}일"
+        return t("status_bar.duration.days", lang=lang, count=whole_days)
+    return t("status_bar.duration.days_decimal", lang=lang, count=f"{days:.1f}")
 
 
 def format_token_count_compact(*args, **kwargs):
@@ -163,6 +171,7 @@ def realign_markdown_tables(*args, **kwargs):
 # NOTE: `from agent.account_usage import ...` is deliberately NOT at module
 # top — it transitively pulls the OpenAI SDK chain (~230 ms cold) and is only
 # needed when the user runs `/limits`. Lazy-imported inside the handler below.
+from agent.i18n import get_language, t
 from hermes_cli.banner import _format_context_length, format_banner_version_label
 
 _COMMAND_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
@@ -3730,18 +3739,16 @@ class HermesCLI:
     def _format_prompt_elapsed(prompt_start_time: Optional[float], prompt_duration: float, live: bool = False) -> str:
         """Format per-prompt elapsed time for the status bar.
 
-        Always returns a string — shows 0초 on fresh start before first turn.
-        Keeps seconds visible at all scales so it increments smoothly:
-            59초 → 1분 → 1분 1초 → ... → 1분 59초 → 2분 → 2분 1초 → ...
-            59분 59초 → 1시간 → 1시간 0분 1초 → ...
-            23시간 59분 59초 → 1일 → 1일 0시간 1분 → ...
+        Always returns a string — shows 0s on fresh start before first turn.
+        Keeps seconds visible at all scales so it increments smoothly.
 
         Emoji prefix: ⏱ when turn is live, ⏲ when frozen or fresh start.
         Uses width-1 (no variation selector) glyphs so the status bar stays
         aligned in monospace terminals.
         """
+        lang = get_language()
         if prompt_start_time is None and prompt_duration == 0.0:
-            return "⏲ 0초"
+            return f"⏲ {t('status_bar.prompt_elapsed.seconds', lang=lang, count=0)}"
         elapsed = time.time() - prompt_start_time if prompt_start_time is not None else prompt_duration
         elapsed = max(0.0, elapsed)
 
@@ -3753,13 +3760,41 @@ class HermesCLI:
         seconds = int(remaining % 60)
 
         if days > 0:
-            time_str = f"{days}일 {hours}시간 {minutes}분"
+            time_str = t(
+                "status_bar.prompt_elapsed.days_hours_minutes",
+                lang=lang,
+                days=days,
+                hours=hours,
+                minutes=minutes,
+            )
         elif hours > 0:
-            time_str = f"{hours}시간 {minutes}분 {seconds}초" if seconds else f"{hours}시간 {minutes}분"
+            if seconds:
+                time_str = t(
+                    "status_bar.prompt_elapsed.hours_minutes_seconds",
+                    lang=lang,
+                    hours=hours,
+                    minutes=minutes,
+                    seconds=seconds,
+                )
+            else:
+                time_str = t(
+                    "status_bar.prompt_elapsed.hours_minutes",
+                    lang=lang,
+                    hours=hours,
+                    minutes=minutes,
+                )
         elif minutes > 0:
-            time_str = f"{minutes}분 {seconds}초" if seconds else f"{minutes}분"
+            if seconds:
+                time_str = t(
+                    "status_bar.prompt_elapsed.minutes_seconds",
+                    lang=lang,
+                    minutes=minutes,
+                    seconds=seconds,
+                )
+            else:
+                time_str = t("status_bar.duration.minutes", lang=lang, count=minutes)
         else:
-            time_str = f"{int(elapsed)}초"
+            time_str = t("status_bar.prompt_elapsed.seconds", lang=lang, count=int(elapsed))
 
         emoji = "⏱" if live else "⏲"
         return f"{emoji} {time_str}"
@@ -3921,57 +3956,46 @@ class HermesCLI:
         """Normalize account-usage window labels for the status bar."""
         raw = str(label or "").strip()
         if not raw:
-            return "사용량"
+            return t("status_bar.window_labels.usage", lang=get_language())
         key = raw.lower()
-        full_map = {
-            "session": "세션",
-            "week": "주간",
-            "weekly": "주간",
-            "day": "일간",
-            "daily": "일간",
-            "hour": "시간",
-            "hourly": "시간",
-            "month": "월간",
-            "monthly": "월간",
+        mapping = {
+            "session": "status_bar.window_labels.session",
+            "week": "status_bar.window_labels.weekly",
+            "weekly": "status_bar.window_labels.weekly",
+            "day": "status_bar.window_labels.daily",
+            "daily": "status_bar.window_labels.daily",
+            "hour": "status_bar.window_labels.hour",
+            "hourly": "status_bar.window_labels.hour",
+            "month": "status_bar.window_labels.monthly",
+            "monthly": "status_bar.window_labels.monthly",
         }
-        compact_map = {
-            "session": "세션",
-            "week": "주간",
-            "weekly": "주간",
-            "day": "일간",
-            "daily": "일간",
-            "hour": "시간",
-            "hourly": "시간",
-            "month": "월간",
-            "monthly": "월간",
-        }
-        mapping = compact_map if compact else full_map
         if key in mapping:
-            return mapping[key]
+            return t(mapping[key], lang=get_language())
         cleaned = raw.split()[0].strip().rstrip(":")
         if cleaned:
             return cleaned
-        return "사용량"
+        return t("status_bar.window_labels.usage", lang=get_language())
 
     @staticmethod
     def _format_account_usage_reset_hint(reset_at) -> Optional[str]:
-        """Return a tiny relative reset hint like 18분, 3시간, or 2일."""
+        """Return a tiny relative reset hint like 18m, 3h, or 2d."""
         if not reset_at:
             return None
         try:
             delta_seconds = int((reset_at - datetime.now(reset_at.tzinfo)).total_seconds())
         except Exception:
             return None
+        lang = get_language()
         if delta_seconds <= 0:
-            return "지금"
+            return t("status_bar.reset.now", lang=lang)
         if delta_seconds < 3600:
             minutes = max(1, round(delta_seconds / 60))
-            return f"{minutes}분"
+            return t("status_bar.reset.minutes", lang=lang, count=minutes)
         if delta_seconds < 86400:
             hours = max(1, round(delta_seconds / 3600))
-            return f"{hours}시간"
+            return t("status_bar.reset.hours", lang=lang, count=hours)
         days = max(1, round(delta_seconds / 86400))
-        return f"{days}일"
+        return t("status_bar.reset.days", lang=lang, count=days)
 
     @staticmethod
     def _format_account_usage_reset_clock(reset_at) -> Optional[str]:
@@ -4256,12 +4280,8 @@ class HermesCLI:
 
     @staticmethod
     def _format_status_bar_token_summary(snapshot: Dict[str, Any], *, compact: bool = False) -> str:
-        """Return a readable session-token summary for the footer.
-
-        Use Korean labels plus intuitive emojis so the footer reads naturally
-        for the user without having to decode symbolic shorthand like ``Σ`` or
-        bare English abbreviations.
-        """
+        """Return a readable session-token summary for the footer."""
+        lang = get_language()
         input_tokens = int(snapshot.get("session_input_tokens", 0) or 0)
         output_tokens = int(snapshot.get("session_output_tokens", 0) or 0)
         total_tokens = int(snapshot.get("session_total_tokens", 0) or 0)
@@ -4272,27 +4292,32 @@ class HermesCLI:
         parts: list[str] = []
         if compact:
             if total_tokens > 0:
-                parts.append(f"🧮 총 {format_token_count_compact(total_tokens)}")
+                parts.append(t("status_bar.tokens.total_compact", lang=lang, count=format_token_count_compact(total_tokens)))
             if api_calls > 0:
-                parts.append(f"🤖 호출 {api_calls}")
+                parts.append(t("status_bar.tokens.calls_compact", lang=lang, count=api_calls))
             if input_tokens > 0:
-                parts.append(f"📥 입력 {format_token_count_compact(input_tokens)}")
+                parts.append(t("status_bar.tokens.input_compact", lang=lang, count=format_token_count_compact(input_tokens)))
             if output_tokens > 0:
-                parts.append(f"📤 출력 {format_token_count_compact(output_tokens)}")
+                parts.append(t("status_bar.tokens.output_compact", lang=lang, count=format_token_count_compact(output_tokens)))
             return " · ".join(parts)
 
         if input_tokens > 0:
-            parts.append(f"📥 입력 {format_token_count_compact(input_tokens)}")
+            parts.append(t("status_bar.tokens.input_full", lang=lang, count=format_token_count_compact(input_tokens)))
         if output_tokens > 0:
-            parts.append(f"📤 출력 {format_token_count_compact(output_tokens)}")
+            parts.append(t("status_bar.tokens.output_full", lang=lang, count=format_token_count_compact(output_tokens)))
         if total_tokens > 0:
-            parts.append(f"🧮 총 {format_token_count_compact(total_tokens)}")
+            parts.append(t("status_bar.tokens.total_full", lang=lang, count=format_token_count_compact(total_tokens)))
         if cache_read_tokens > 0 or cache_write_tokens > 0:
             parts.append(
-                f"🗃 캐시 {format_token_count_compact(cache_read_tokens)}/{format_token_count_compact(cache_write_tokens)}"
+                t(
+                    "status_bar.tokens.cache_full",
+                    lang=lang,
+                    read_count=format_token_count_compact(cache_read_tokens),
+                    write_count=format_token_count_compact(cache_write_tokens),
+                )
             )
         if api_calls > 0:
-            parts.append(f"🤖 API 호출 {api_calls}")
+            parts.append(t("status_bar.tokens.api_calls_full", lang=lang, count=api_calls))
         return " · ".join(parts) if parts else ""
 
     @staticmethod
@@ -4463,7 +4488,7 @@ class HermesCLI:
     def _build_status_bar_text(self, width: Optional[int] = None) -> str:
         """Return a width-aware status string for the TUI footer without truncation.
 
-        For normal desktop widths, deliberately prefer a two-line footer so the
+        For normal desktop widths, auto mode prefers a two-line footer so the
         user can see richer session/account state without packing everything into
         a dense single row.
         """
@@ -4512,14 +4537,18 @@ class HermesCLI:
                 account_usage_bits.append(f"💳 {account_usage_credits_compact_label}")
             if account_usage_warning_marker and account_usage_bits:
                 account_usage_bits.append(account_usage_warning_marker)
-            account_usage_label = f"📈 {' '.join(account_usage_bits)}" if account_usage_bits else ("📈 불러오는 중..." if account_usage_loading else "")
+            account_usage_label = (
+                f"📈 {' '.join(account_usage_bits)}"
+                if account_usage_bits
+                else (f"📈 {t('status_bar.loading', lang=get_language())}" if account_usage_loading else "")
+            )
 
             if snapshot["context_length"]:
                 ctx_total = _format_context_length(snapshot["context_length"])
                 ctx_used = format_token_count_compact(snapshot["context_tokens"])
                 context_label = f"{ctx_used}/{ctx_total}"
             else:
-                context_label = "문맥 --"
+                context_label = t("status_bar.context_unknown", lang=get_language())
 
             compressions = snapshot.get("compressions", 0)
             bg_count = snapshot.get("active_background_tasks", 0)
@@ -4540,7 +4569,7 @@ class HermesCLI:
                 if bg_proc_count:
                     aux_parts.append(f"⚙ {bg_proc_count}")
                 if yolo_active:
-                    aux_parts.append("⚠ 승인생략")
+                    aux_parts.append(t("status_bar.yolo", lang=get_language()))
                 return self._merge_status_bar_line_groups([
                     self._wrap_status_bar_parts(header_parts, " · ", width),
                     usage_lines,
@@ -4563,7 +4592,7 @@ class HermesCLI:
                 if bg_proc_count:
                     detail_parts.append(f"⚙ {bg_proc_count}")
                 if yolo_active:
-                    detail_parts.append("⚠ 승인생략")
+                    detail_parts.append(t("status_bar.yolo", lang=get_language()))
                 return self._join_status_bar_line_groups([
                     self._wrap_status_bar_parts(header_parts, " · ", width),
                     self._wrap_status_bar_parts(detail_parts, " · ", width),
@@ -4586,7 +4615,7 @@ class HermesCLI:
             if bg_proc_count:
                 detail_parts.append(f"⚙ {bg_proc_count}")
             if yolo_active:
-                detail_parts.append("⚠ 승인생략")
+                detail_parts.append(t("status_bar.yolo", lang=get_language()))
             if not detail_parts and token_summary_compact:
                 detail_parts.append(token_summary_compact)
             return self._join_status_bar_line_groups([

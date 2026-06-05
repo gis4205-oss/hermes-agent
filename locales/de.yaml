@@ -353,3 +353,75 @@ gateway:
     session_db_unavailable_prefix: "Session-Datenbank nicht verfügbar"
     session_not_found:           "Session nicht in der Datenbank gefunden."
     warn_passthrough:            "⚠️ {error}"
+
+status_bar:
+  loading: "loading..."
+  context_unknown: "ctx --"
+  yolo: "⚠ yolo"
+
+  window_labels:
+    usage: "Usage"
+    session: "Session"
+    weekly: "Weekly"
+    daily: "Daily"
+    hour: "Hour"
+    monthly: "Monthly"
+
+  duration:
+    seconds: "{count}s"
+    minutes: "{count}m"
+    hours: "{count}h"
+    hours_minutes: "{hours}h {minutes}m"
+    days: "{count}d"
+    days_decimal: "{count}d"
+
+  reset:
+    now: "now"
+    minutes: "{count}m"
+    hours: "{count}h"
+    days: "{count}d"
+
+  prompt_elapsed:
+    seconds: "{count}s"
+    minutes_seconds: "{minutes}m {seconds}s"
+    hours_minutes: "{hours}h {minutes}m"
+    hours_minutes_seconds: "{hours}h {minutes}m {seconds}s"
+    days_hours_minutes: "{days}d {hours}h {minutes}m"
+
+  tokens:
+    total_compact: "🧮 Σ {count}"
+    calls_compact: "🤖 {count} calls"
+    input_compact: "📥 in {count}"
+    output_compact: "📤 out {count}"
+    input_full: "📥 in {count}"
+    output_full: "📤 out {count}"
+    total_full: "🧮 total {count}"
+    cache_full: "🗃 cache {read_count}/{write_count}"
+    api_calls_full: "🤖 API calls {count}"
+
+account_usage:
+  title: "Account usage"
+  provider: "Provider: {provider}"
+  provider_with_plan: "Provider: {provider} ({plan})"
+  window_unavailable: "{label}: usage unavailable"
+  window_remaining_used: "{label}: {remaining}% left ({used}% used)"
+  window_reset_suffix: " • reset {reset}"
+  window_detail_suffix: " • {detail}"
+  unavailable_reason: "Unavailable: {reason}"
+
+  window_labels:
+    usage: "Usage"
+    session: "Session"
+    weekly: "Weekly"
+    daily: "Daily"
+    hour: "Hour"
+    monthly: "Monthly"
+    raw: "{value}"
+
+  reset:
+    unknown: "unknown"
+    now: "now ({datetime})"
+    minutes: "in {minutes}m"
+    hours_minutes: "in {hours}h {minutes}m"
+    days_hours: "in {days}d {hours}h"
+    with_datetime: "{relative} ({datetime})"

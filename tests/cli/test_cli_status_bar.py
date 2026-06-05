@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from agent import i18n
 from cli import HermesCLI, format_duration_compact
 from agent.account_usage import AccountUsageSnapshot
 
@@ -69,6 +70,14 @@ def _attach_agent(
     return cli_obj
 
 
+def _set_language(monkeypatch, lang: str | None):
+    i18n.reset_language_cache()
+    if lang is None:
+        monkeypatch.delenv("HERMES_LANGUAGE", raising=False)
+    else:
+        monkeypatch.setenv("HERMES_LANGUAGE", lang)
+
+
 class TestCLIStatusBar:
     def test_context_style_thresholds(self):
         cli_obj = _make_cli()
@@ -79,7 +88,8 @@ class TestCLIStatusBar:
         assert cli_obj._status_bar_context_style(81) == "class:status-bar-bad"
         assert cli_obj._status_bar_context_style(95) == "class:status-bar-critical"
 
-    def test_build_status_bar_text_for_wide_terminal(self):
+    def test_build_status_bar_text_for_wide_terminal_defaults_to_english(self, monkeypatch):
+        _set_language(monkeypatch, None)
         cli_obj = _attach_agent(
             _make_cli(),
             prompt_tokens=10_230,
@@ -98,13 +108,43 @@ class TestCLIStatusBar:
         assert "12.4K/200K" in text
         assert "6%" in text
         assert "$0.06" not in text  # cost hidden by default
+        assert "15m" in text
+        assert "🧮 Σ 12.4K" in text
+        assert "🤖 7 calls" in text
+        assert "📥 in 10.2K" in text
+        assert "📤 out 2.22K" in text
+
+    def test_build_status_bar_text_for_wide_terminal_honors_korean_language(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
+        cli_obj = _attach_agent(
+            _make_cli(),
+            prompt_tokens=10_230,
+            completion_tokens=2_220,
+            total_tokens=12_450,
+            api_calls=7,
+            context_tokens=12_450,
+            context_length=200_000,
+        )
+
+        text = cli_obj._build_status_bar_text(width=120)
+
         assert "15분" in text
         assert "🧮 총 12.4K" in text
         assert "🤖 호출 7" in text
         assert "📥 입력 10.2K" in text
         assert "📤 출력 2.22K" in text
 
-    def test_account_usage_window_labels_prefer_korean(self):
+    def test_account_usage_window_labels_default_to_english(self, monkeypatch):
+        _set_language(monkeypatch, None)
+        cli_obj = _make_cli()
+
+        assert cli_obj._format_account_usage_window_label("Session") == "Session"
+        assert cli_obj._format_account_usage_window_label("Weekly") == "Weekly"
+        assert cli_obj._format_account_usage_window_label("hour", compact=True) == "Hour"
+        assert cli_obj._format_account_usage_window_label(None) == "Usage"
+
+    def test_account_usage_window_labels_honor_korean_language(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
         cli_obj = _make_cli()
 
         assert cli_obj._format_account_usage_window_label("Session") == "세션"
@@ -112,13 +152,34 @@ class TestCLIStatusBar:
         assert cli_obj._format_account_usage_window_label("hour", compact=True) == "시간"
         assert cli_obj._format_account_usage_window_label(None) == "사용량"
 
-    def test_duration_format_prefers_korean_units(self):
+    def test_duration_format_defaults_to_english_units(self, monkeypatch):
+        _set_language(monkeypatch, None)
+
+        assert format_duration_compact(45) == "45s"
+        assert format_duration_compact(15 * 60) == "15m"
+        assert format_duration_compact(2 * 3600 + 5 * 60) == "2h 5m"
+        assert format_duration_compact(7 * 86400) == "7d"
+
+    def test_duration_format_honors_korean_units(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
+
         assert format_duration_compact(45) == "45초"
         assert format_duration_compact(15 * 60) == "15분"
         assert format_duration_compact(2 * 3600 + 5 * 60) == "2시간 5분"
         assert format_duration_compact(7 * 86400) == "7일"
 
-    def test_account_usage_reset_hint_prefers_korean_units(self):
+    def test_account_usage_reset_hint_defaults_to_english_units(self, monkeypatch):
+        _set_language(monkeypatch, None)
+        cli_obj = _make_cli()
+        now = datetime.now()
+
+        assert cli_obj._format_account_usage_reset_hint(now - timedelta(seconds=5)) == "now"
+        assert cli_obj._format_account_usage_reset_hint(now + timedelta(minutes=18)) == "18m"
+        assert cli_obj._format_account_usage_reset_hint(now + timedelta(hours=3)) == "3h"
+        assert cli_obj._format_account_usage_reset_hint(now + timedelta(days=2)) == "2d"
+
+    def test_account_usage_reset_hint_honors_korean_units(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
         cli_obj = _make_cli()
         now = datetime.now()
 
@@ -127,7 +188,16 @@ class TestCLIStatusBar:
         assert cli_obj._format_account_usage_reset_hint(now + timedelta(hours=3)) == "3시간"
         assert cli_obj._format_account_usage_reset_hint(now + timedelta(days=2)) == "2일"
 
-    def test_prompt_elapsed_prefers_korean_units(self):
+    def test_prompt_elapsed_defaults_to_english_units(self, monkeypatch):
+        _set_language(monkeypatch, None)
+        frozen = HermesCLI._format_prompt_elapsed(None, 65.0, live=False)
+        live = HermesCLI._format_prompt_elapsed(None, 3661.0, live=True)
+
+        assert frozen == "⏲ 1m 5s"
+        assert live == "⏱ 1h 1m 1s"
+
+    def test_prompt_elapsed_honors_korean_units(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
         frozen = HermesCLI._format_prompt_elapsed(None, 65.0, live=False)
         live = HermesCLI._format_prompt_elapsed(None, 3661.0, live=True)
 
@@ -257,7 +327,8 @@ class TestCLIStatusBar:
         text = cli_obj._build_status_bar_text(width=120)
         assert "$" not in text  # cost is never shown in status bar
 
-    def test_build_status_bar_text_collapses_for_narrow_terminal(self):
+    def test_build_status_bar_text_collapses_for_narrow_terminal(self, monkeypatch):
+        _set_language(monkeypatch, None)
         cli_obj = _attach_agent(
             _make_cli(),
             prompt_tokens=10000,
@@ -274,7 +345,7 @@ class TestCLIStatusBar:
         assert len(lines) == 2
         assert "⚕" in text
         assert "$0.06" not in text  # cost hidden by default
-        assert "15분" in text
+        assert "15m" in text
         assert "200K" not in text
 
     def test_build_status_bar_text_handles_missing_agent(self):
@@ -722,7 +793,8 @@ class TestCLIUsageReport:
         assert "n/a" in output
         assert "glm-5 모델의 가격 정보를 알 수 없습니다" in output
 
-    def test_status_bar_wraps_without_ellipsis_when_width_is_tight(self):
+    def test_status_bar_wraps_without_ellipsis_when_width_is_tight(self, monkeypatch):
+        _set_language(monkeypatch, None)
         cli_obj = _make_cli(model="anthropic/claude-sonnet-4-20250514")
         cli_obj._status_bar_visible = True
         cli_obj._get_status_bar_snapshot = lambda: {
@@ -753,13 +825,46 @@ class TestCLIUsageReport:
 
         assert "..." not in text
         assert "📈" in text
-        assert "세션" in text
-        assert "주간" in text
+        assert "Session" in text
+        assert "Weekly" in text
         assert "🗜️ 1" in text
         for line in text.splitlines():
             assert cli_obj._status_bar_display_width(line) <= 44
 
-    def test_status_bar_loading_label_is_korean(self):
+    def test_status_bar_loading_label_defaults_to_english(self, monkeypatch):
+        _set_language(monkeypatch, None)
+        cli_obj = _make_cli(model="anthropic/claude-sonnet-4-20250514")
+        cli_obj._status_bar_visible = True
+        cli_obj._get_status_bar_snapshot = lambda: {
+            "model_name": "anthropic/claude-sonnet-4-20250514",
+            "model_short": "claude-sonnet-4-20250514",
+            "duration": "2h",
+            "prompt_elapsed": "⏲ 3m",
+            "context_percent": 33,
+            "context_length": 200_000,
+            "context_tokens": 66_000,
+            "compressions": 0,
+            "active_background_tasks": 0,
+            "active_background_processes": 0,
+            "account_usage_primary_label": None,
+            "account_usage_primary_remaining": None,
+            "account_usage_primary_reset_hint": None,
+            "account_usage_primary_reset_clock": None,
+            "account_usage_secondary_label": None,
+            "account_usage_secondary_remaining": None,
+            "account_usage_secondary_reset_hint": None,
+            "account_usage_credits_label": None,
+            "account_usage_credits_compact_label": None,
+            "account_usage_risk_level": None,
+            "account_usage_loading": True,
+        }
+
+        text = cli_obj._build_status_bar_text(width=100)
+
+        assert "📈 loading..." in text
+
+    def test_status_bar_loading_label_honors_korean_language(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
         cli_obj = _make_cli(model="anthropic/claude-sonnet-4-20250514")
         cli_obj._status_bar_visible = True
         cli_obj._get_status_bar_snapshot = lambda: {

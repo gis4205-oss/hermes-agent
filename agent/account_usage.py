@@ -7,6 +7,7 @@ from typing import Any, Optional
 import httpx
 
 from agent.anthropic_adapter import _is_oauth_token, resolve_anthropic_token
+from agent.i18n import get_language, t
 from hermes_cli.auth import _read_codex_tokens, resolve_codex_runtime_credentials
 from hermes_cli.runtime_provider import resolve_runtime_provider
 
@@ -28,7 +29,7 @@ class AccountUsageSnapshot:
     provider: str
     source: str
     fetched_at: datetime
-    title: str = "계정 한도"
+    title: str = "Account usage"
     plan: Optional[str] = None
     windows: tuple[AccountUsageWindow, ...] = ()
     details: tuple[str, ...] = ()
@@ -56,19 +57,19 @@ def _title_case_slug(value: Optional[str]) -> Optional[str]:
 def _localize_window_label(label: Optional[str]) -> str:
     raw = str(label or "").strip()
     if not raw:
-        return "사용량"
+        return t("account_usage.window_labels.usage", lang=get_language())
     mapping = {
-        "session": "세션",
-        "week": "주간",
-        "weekly": "주간",
-        "day": "일간",
-        "daily": "일간",
-        "hour": "시간",
-        "hourly": "시간",
-        "month": "월간",
-        "monthly": "월간",
+        "session": "account_usage.window_labels.session",
+        "week": "account_usage.window_labels.weekly",
+        "weekly": "account_usage.window_labels.weekly",
+        "day": "account_usage.window_labels.daily",
+        "daily": "account_usage.window_labels.daily",
+        "hour": "account_usage.window_labels.hour",
+        "hourly": "account_usage.window_labels.hour",
+        "month": "account_usage.window_labels.monthly",
+        "monthly": "account_usage.window_labels.monthly",
     }
-    return mapping.get(raw.lower(), raw)
+    return t(mapping.get(raw.lower(), "account_usage.window_labels.raw"), lang=get_language(), value=raw)
 
 
 def _parse_dt(value: Any) -> Optional[datetime]:
@@ -92,50 +93,54 @@ def _parse_dt(value: Any) -> Optional[datetime]:
 
 def _format_reset(dt: Optional[datetime]) -> str:
     if not dt:
-        return "unknown"
+        return t("account_usage.reset.unknown", lang=get_language())
     local_dt = dt.astimezone()
     delta = dt - _utc_now()
     total_seconds = int(delta.total_seconds())
+    formatted_local = local_dt.strftime("%Y-%m-%d %H:%M %Z")
+    lang = get_language()
     if total_seconds <= 0:
-        return f"now ({local_dt.strftime('%Y-%m-%d %H:%M %Z')})"
+        return t("account_usage.reset.now", lang=lang, datetime=formatted_local)
     hours, rem = divmod(total_seconds, 3600)
     minutes = rem // 60
     if hours >= 24:
         days, hours = divmod(hours, 24)
-        rel = f"{days}일 {hours}시간 후"
+        rel = t("account_usage.reset.days_hours", lang=lang, days=days, hours=hours)
     elif hours > 0:
-        rel = f"{hours}시간 {minutes}분 후"
+        rel = t("account_usage.reset.hours_minutes", lang=lang, hours=hours, minutes=minutes)
     else:
-        rel = f"{minutes}분 후"
-    return f"{rel} ({local_dt.strftime('%Y-%m-%d %H:%M %Z')})"
+        rel = t("account_usage.reset.minutes", lang=lang, minutes=minutes)
+    return t("account_usage.reset.with_datetime", lang=lang, relative=rel, datetime=formatted_local)
 
 
 def render_account_usage_lines(snapshot: Optional[AccountUsageSnapshot], *, markdown: bool = False) -> list[str]:
     if not snapshot:
         return []
-    header = f"📈 {'**' if markdown else ''}{snapshot.title}{'**' if markdown else ''}"
+    lang = get_language()
+    title = t("account_usage.title", lang=lang)
+    header = f"📈 {'**' if markdown else ''}{title}{'**' if markdown else ''}"
     lines = [header]
     if snapshot.plan:
-        lines.append(f"제공자: {snapshot.provider} ({snapshot.plan})")
+        lines.append(t("account_usage.provider_with_plan", lang=lang, provider=snapshot.provider, plan=snapshot.plan))
     else:
-        lines.append(f"제공자: {snapshot.provider}")
+        lines.append(t("account_usage.provider", lang=lang, provider=snapshot.provider))
     for window in snapshot.windows:
         label = _localize_window_label(window.label)
         if window.used_percent is None:
-            base = f"{label}: 사용량 정보를 확인할 수 없음"
+            base = t("account_usage.window_unavailable", lang=lang, label=label)
         else:
             remaining = max(0, round(100 - float(window.used_percent)))
             used = max(0, round(float(window.used_percent)))
-            base = f"{label}: {remaining}% 남음 ({used}% 사용)"
+            base = t("account_usage.window_remaining_used", lang=lang, label=label, remaining=remaining, used=used)
         if window.reset_at:
-            base += f" • 초기화 {_format_reset(window.reset_at)}"
+            base += t("account_usage.window_reset_suffix", lang=lang, reset=_format_reset(window.reset_at))
         elif window.detail:
-            base += f" • {window.detail}"
+            base += t("account_usage.window_detail_suffix", lang=lang, detail=window.detail)
         lines.append(base)
     for detail in snapshot.details:
         lines.append(detail)
     if snapshot.unavailable_reason:
-        lines.append(f"확인 불가: {snapshot.unavailable_reason}")
+        lines.append(t("account_usage.unavailable_reason", lang=lang, reason=snapshot.unavailable_reason))
     return lines
 
 
