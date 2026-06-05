@@ -1,6 +1,10 @@
 """Random tips shown at CLI session start to help users discover features."""
 
+import importlib.util
 import random
+from pathlib import Path
+
+from hermes_constants import get_hermes_home
 
 
 # ---------------------------------------------------------------------------
@@ -8,7 +12,7 @@ import random
 # keybindings, tools, gateway, skills, profiles, and workflow tricks.
 # ---------------------------------------------------------------------------
 
-TIPS = [
+BUILTIN_TIPS = [
     # --- Slash Commands ---
     "/background <prompt> (alias /bg or /btw) runs a task in a separate session while your current one stays free.",
     "/branch forks the current session so you can explore a different direction without losing progress.",
@@ -448,7 +452,7 @@ TIPS = [
     'HERMES_OPTIONAL_SKILLS=name1,name2 auto-installs extra optional-catalog skills on first run per profile.',
     'HERMES_BUNDLED_SKILLS points at a custom bundled-skill tree — used by Homebrew and Nix packaging.',
     'HERMES_DUMP_REQUEST_STDOUT=1 dumps every API request payload to stdout instead of log files.',
-    'HERMES_OAUTH_TRACE=1 logs redacted OAuth token exchange and refresh attempts for debugging provider auth.',
+    'HERMES_OAUTH_TRACE=*** logs redacted OAuth token exchange and refresh attempts for debugging provider auth.',
     'HERMES_STREAM_RETRIES (default 3) controls mid-stream reconnect attempts on transient network errors.',
 
     # --- Gateway Behavior Env Vars ---
@@ -483,5 +487,70 @@ def get_random_tip(exclude_recent: int = 0) -> str:
         exclude_recent: not used currently; reserved for future
             deduplication across sessions.
     """
-    return random.choice(TIPS)
+    return random.choice(get_tip_corpus())
 
+TIPS = BUILTIN_TIPS
+
+
+def _normalize_tips(raw: object) -> list[str]:
+    """Return a cleaned list of non-empty string tips."""
+    if not isinstance(raw, (list, tuple, set)):
+        return []
+    cleaned: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        tip = item.strip()
+        if tip:
+            cleaned.append(tip)
+    return cleaned
+
+
+def _load_python_tip_override(path: Path) -> list[str]:
+    """Load a trusted Python tip override from the active Hermes home."""
+    try:
+        spec = importlib.util.spec_from_file_location('_hermes_user_tips', path)
+        if spec is None or spec.loader is None:
+            return []
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        return []
+
+    tips = getattr(module, 'TIPS', None)
+    if tips is None and hasattr(module, 'get_tips'):
+        try:
+            tips = module.get_tips()
+        except Exception:
+            return []
+    return _normalize_tips(tips)
+
+
+def _load_text_tip_override(path: Path) -> list[str]:
+    """Load line-based tips from ~/.hermes/tips.txt."""
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except Exception:
+        return []
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith('#')]
+
+
+def get_tip_corpus() -> list[str]:
+    """Return the active tip corpus, preferring user-local overrides.
+
+    Override search order:
+    1. ~/.hermes/tips.py  (must define TIPS or get_tips())
+    2. ~/.hermes/tips.txt (one tip per non-empty, non-comment line)
+    3. Bundled BUILTIN_TIPS in the repo
+    """
+    home = get_hermes_home()
+
+    python_override = _load_python_tip_override(home / 'tips.py')
+    if python_override:
+        return python_override
+
+    text_override = _load_text_tip_override(home / 'tips.txt')
+    if text_override:
+        return text_override
+
+    return BUILTIN_TIPS
