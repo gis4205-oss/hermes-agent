@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from cli import HermesCLI
+from agent import i18n
+from cli import HermesCLI, format_duration_compact
 
 
 def _make_cli(model: str = "anthropic/claude-sonnet-4-20250514"):
@@ -52,6 +53,14 @@ def _attach_agent(
     return cli_obj
 
 
+def _set_language(monkeypatch, lang: str | None):
+    i18n.reset_language_cache()
+    if lang is None:
+        monkeypatch.delenv("HERMES_LANGUAGE", raising=False)
+    else:
+        monkeypatch.setenv("HERMES_LANGUAGE", lang)
+
+
 class TestCLIStatusBar:
     def test_context_style_thresholds(self):
         cli_obj = _make_cli()
@@ -62,7 +71,8 @@ class TestCLIStatusBar:
         assert cli_obj._status_bar_context_style(81) == "class:status-bar-bad"
         assert cli_obj._status_bar_context_style(95) == "class:status-bar-critical"
 
-    def test_build_status_bar_text_for_wide_terminal(self):
+    def test_build_status_bar_text_for_wide_terminal_defaults_to_english(self, monkeypatch):
+        _set_language(monkeypatch, None)
         cli_obj = _attach_agent(
             _make_cli(),
             prompt_tokens=10_230,
@@ -80,6 +90,22 @@ class TestCLIStatusBar:
         assert "6%" in text
         assert "$0.06" not in text  # cost hidden by default
         assert "15m" in text
+
+    def test_build_status_bar_text_for_wide_terminal_honors_korean(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
+        cli_obj = _attach_agent(
+            _make_cli(),
+            prompt_tokens=10_230,
+            completion_tokens=2_220,
+            total_tokens=12_450,
+            api_calls=7,
+            context_tokens=12_450,
+            context_length=200_000,
+        )
+
+        text = cli_obj._build_status_bar_text(width=120)
+
+        assert "15분" in text
 
     def test_post_compression_sentinel_does_not_render_negative(self):
         """Right after a compression, last_prompt_tokens is parked at the -1
@@ -204,7 +230,8 @@ class TestCLIStatusBar:
         text = cli_obj._build_status_bar_text(width=120)
         assert "$" not in text  # cost is never shown in status bar
 
-    def test_build_status_bar_text_collapses_for_narrow_terminal(self):
+    def test_build_status_bar_text_collapses_for_narrow_terminal(self, monkeypatch):
+        _set_language(monkeypatch, None)
         cli_obj = _attach_agent(
             _make_cli(),
             prompt_tokens=10000,
@@ -221,6 +248,12 @@ class TestCLIStatusBar:
         assert "$0.06" not in text  # cost hidden by default
         assert "15m" in text
         assert "200K" not in text
+
+    def test_duration_and_prompt_elapsed_honor_korean(self, monkeypatch):
+        _set_language(monkeypatch, "ko")
+        assert format_duration_compact(45) == "45초"
+        assert format_duration_compact(15 * 60) == "15분"
+        assert HermesCLI._format_prompt_elapsed(None, 65.0, live=False) == "⏲ 1분 5초"
 
     def test_build_status_bar_text_handles_missing_agent(self):
         cli_obj = _make_cli()

@@ -353,3 +353,48 @@ gateway:
     session_db_unavailable_prefix: "工作階段資料庫無法使用"
     session_not_found:           "資料庫中找不到此工作階段。"
     warn_passthrough:            "⚠️ {error}"
+
+status_bar:
+  context_unknown: "ctx --"
+  yolo: "⚠ YOLO"
+
+  duration:
+    seconds: "{count}s"
+    minutes: "{count}m"
+    hours: "{count}h"
+    hours_minutes: "{hours}h {minutes}m"
+    days_decimal: "{count}d"
+
+  prompt_elapsed:
+    seconds: "{count}s"
+    minutes_seconds: "{minutes}m {seconds}s"
+    hours_minutes: "{hours}h {minutes}m"
+    hours_minutes_seconds: "{hours}h {minutes}m {seconds}s"
+    days_hours_minutes: "{days}d {hours}h {minutes}m"
+
+account_usage:
+  title: "Account limits"
+  provider: "Provider: {provider}"
+  provider_with_plan: "Provider: {provider} ({plan})"
+  window_unavailable: "{label}: unavailable"
+  window_remaining_used: "{label}: {remaining}% remaining ({used}% used)"
+  window_reset_suffix: " • resets {reset}"
+  window_detail_suffix: " • {detail}"
+  unavailable_reason: "Unavailable: {reason}"
+
+  window_labels:
+    usage: "Usage"
+    session: "Session"
+    weekly: "Weekly"
+    daily: "Daily"
+    hour: "Hour"
+    monthly: "Monthly"
+    raw: "{value}"
+
+  reset:
+    unknown: "unknown"
+    now: "now ({datetime})"
+    minutes: "in {minutes}m"
+    hours_minutes: "in {hours}h {minutes}m"
+    days_hours: "in {days}d {hours}h"
+    with_datetime: "{relative} ({datetime})"

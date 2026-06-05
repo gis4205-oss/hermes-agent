@@ -102,17 +102,20 @@ def estimate_usage_cost(*args, **kwargs):
 
 def format_duration_compact(*args, **kwargs):
     seconds = float(args[0] if args else kwargs.get("seconds", 0.0))
+    lang = get_language()
     if seconds < 60:
-        return f"{seconds:.0f}s"
+        return t("status_bar.duration.seconds", lang=lang, count=round(seconds))
     minutes = seconds / 60
     if minutes < 60:
-        return f"{minutes:.0f}m"
+        return t("status_bar.duration.minutes", lang=lang, count=round(minutes))
     hours = minutes / 60
     if hours < 24:
         remaining_min = int(minutes % 60)
-        return f"{int(hours)}h {remaining_min}m" if remaining_min else f"{int(hours)}h"
+        if remaining_min:
+            return t("status_bar.duration.hours_minutes", lang=lang, hours=int(hours), minutes=remaining_min)
+        return t("status_bar.duration.hours", lang=lang, count=int(hours))
     days = hours / 24
-    return f"{days:.1f}d"
+    return t("status_bar.duration.days_decimal", lang=lang, count=f"{days:.1f}")
 
 
 def format_token_count_compact(*args, **kwargs):
@@ -158,6 +161,7 @@ def realign_markdown_tables(*args, **kwargs):
 # NOTE: `from agent.account_usage import ...` is deliberately NOT at module
 # top — it transitively pulls the OpenAI SDK chain (~230 ms cold) and is only
 # needed when the user runs `/limits`. Lazy-imported inside the handler below.
+from agent.i18n import get_language, t
 from hermes_cli.banner import _format_context_length, format_banner_version_label
 
 _COMMAND_SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
@@ -3638,8 +3642,9 @@ class HermesCLI:
         Uses width-1 (no variation selector) glyphs so the status bar stays
         aligned in monospace terminals.
         """
+        lang = get_language()
         if prompt_start_time is None and prompt_duration == 0.0:
-            return "⏲ 0s"
+            return f"⏲ {t('status_bar.prompt_elapsed.seconds', lang=lang, count=0)}"
         elapsed = time.time() - prompt_start_time if prompt_start_time is not None else prompt_duration
         elapsed = max(0.0, elapsed)
 
@@ -3651,13 +3656,16 @@ class HermesCLI:
         seconds = int(remaining % 60)
 
         if days > 0:
-            time_str = f"{days}d {hours}h {minutes}m"
+            time_str = t("status_bar.prompt_elapsed.days_hours_minutes", lang=lang, days=days, hours=hours, minutes=minutes)
         elif hours > 0:
-            time_str = f"{hours}h {minutes}m {seconds}s" if seconds else f"{hours}h {minutes}m"
+            if seconds:
+                time_str = t("status_bar.prompt_elapsed.hours_minutes_seconds", lang=lang, hours=hours, minutes=minutes, seconds=seconds)
+            else:
+                time_str = t("status_bar.prompt_elapsed.hours_minutes", lang=lang, hours=hours, minutes=minutes)
         elif minutes > 0:
-            time_str = f"{minutes}m {seconds}s" if seconds else f"{minutes}m"
+            time_str = t("status_bar.prompt_elapsed.minutes_seconds", lang=lang, minutes=minutes, seconds=seconds) if seconds else t("status_bar.duration.minutes", lang=lang, count=minutes)
         else:
-            time_str = f"{int(elapsed)}s"
+            time_str = t("status_bar.prompt_elapsed.seconds", lang=lang, count=int(elapsed))
 
         emoji = "⏱" if live else "⏲"
         return f"{emoji} {time_str}"
@@ -3957,7 +3965,7 @@ class HermesCLI:
             if width < 52:
                 text = f"⚕ {snapshot['model_short']} · {duration_label}"
                 if yolo_active:
-                    text += " · ⚠ YOLO"
+                    text += f" · {t('status_bar.yolo', lang=get_language())}"
                 return self._trim_status_bar_text(text, width)
             if width < 76:
                 parts = [f"⚕ {snapshot['model_short']}", percent_label]
@@ -3972,7 +3980,7 @@ class HermesCLI:
                     parts.append(f"⚙ {bg_proc_count}")
                 parts.append(duration_label)
                 if yolo_active:
-                    parts.append("⚠ YOLO")
+                    parts.append(t("status_bar.yolo", lang=get_language()))
                 return self._trim_status_bar_text(" · ".join(parts), width)
 
             if snapshot["context_length"]:
@@ -3980,7 +3988,7 @@ class HermesCLI:
                 ctx_used = format_token_count_compact(snapshot["context_tokens"])
                 context_label = f"{ctx_used}/{ctx_total}"
             else:
-                context_label = "ctx --"
+                context_label = t("status_bar.context_unknown", lang=get_language())
 
             compressions = snapshot.get("compressions", 0)
             parts = [f"⚕ {snapshot['model_short']}", context_label, percent_label]
@@ -3997,7 +4005,7 @@ class HermesCLI:
             if prompt_elapsed:
                 parts.append(prompt_elapsed)
             if yolo_active:
-                parts.append("⚠ YOLO")
+                parts.append(t("status_bar.yolo", lang=get_language()))
             return self._trim_status_bar_text(" │ ".join(parts), width)
         except Exception:
             return f"⚕ {self.model if getattr(self, 'model', None) else 'Hermes'}"
@@ -4025,7 +4033,7 @@ class HermesCLI:
                 ]
                 if yolo_active:
                     frags.append(("class:status-bar-dim", " · "))
-                    frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                    frags.append(("class:status-bar-yolo", t("status_bar.yolo", lang=get_language())))
                 frags.append(("class:status-bar", " "))
             else:
                 percent = snapshot["context_percent"]
@@ -4055,7 +4063,7 @@ class HermesCLI:
                     ])
                     if yolo_active:
                         frags.append(("class:status-bar-dim", " · "))
-                        frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                        frags.append(("class:status-bar-yolo", t("status_bar.yolo", lang=get_language())))
                     frags.append(("class:status-bar", " "))
                 else:
                     if snapshot["context_length"]:
@@ -4063,7 +4071,7 @@ class HermesCLI:
                         ctx_used = format_token_count_compact(snapshot["context_tokens"])
                         context_label = f"{ctx_used}/{ctx_total}"
                     else:
-                        context_label = "ctx --"
+                        context_label = t("status_bar.context_unknown", lang=get_language())
 
                     bar_style = self._status_bar_context_style(percent)
                     compressions = snapshot.get("compressions", 0)
@@ -4099,7 +4107,7 @@ class HermesCLI:
                         frags.append(("class:status-bar-dim", prompt_elapsed))
                     if yolo_active:
                         frags.append(("class:status-bar-dim", " │ "))
-                        frags.append(("class:status-bar-yolo", "⚠ YOLO"))
+                        frags.append(("class:status-bar-yolo", t("status_bar.yolo", lang=get_language())))
                     frags.append(("class:status-bar", " "))
 
             total_width = sum(self._status_bar_display_width(text) for _, text in frags)

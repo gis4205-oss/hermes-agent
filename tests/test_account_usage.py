@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from agent import i18n
 from agent.account_usage import (
     AccountUsageSnapshot,
     AccountUsageWindow,
@@ -95,7 +96,9 @@ def test_fetch_account_usage_codex(monkeypatch):
     assert "Credits balance: $12.50" in snapshot.details
 
 
-def test_render_account_usage_lines_includes_reset_and_provider():
+def test_render_account_usage_lines_includes_reset_and_provider(monkeypatch):
+    i18n.reset_language_cache()
+    monkeypatch.delenv("HERMES_LANGUAGE", raising=False)
     snapshot = AccountUsageSnapshot(
         provider="openai-codex",
         source="usage_api",
@@ -116,6 +119,30 @@ def test_render_account_usage_lines_includes_reset_and_provider():
     assert "openai-codex (Pro)" in lines[1]
     assert "Session: 75% remaining (25% used)" in lines[2]
     assert "Credits balance: $9.99" in lines[3]
+
+
+def test_render_account_usage_lines_honor_korean(monkeypatch):
+    i18n.reset_language_cache()
+    monkeypatch.setenv("HERMES_LANGUAGE", "ko")
+    snapshot = AccountUsageSnapshot(
+        provider="openai-codex",
+        source="usage_api",
+        fetched_at=datetime.now(timezone.utc),
+        plan="Pro",
+        windows=(
+            AccountUsageWindow(
+                label="Session",
+                used_percent=25,
+                reset_at=datetime.now(timezone.utc),
+            ),
+        ),
+        details=("Credits balance: $9.99",),
+    )
+    lines = render_account_usage_lines(snapshot)
+
+    assert lines[0] == "📈 계정 한도"
+    assert lines[1].startswith("제공자: ")
+    assert "세션: 75% 남음 (25% 사용)" in lines[2]
 
 
 def test_fetch_account_usage_openrouter_uses_limit_remaining_and_ignores_deprecated_rate_limit(monkeypatch):
