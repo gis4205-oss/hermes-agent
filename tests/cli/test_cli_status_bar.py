@@ -348,6 +348,40 @@ class TestCLIStatusBar:
         assert "15m" in text
         assert "200K" not in text
 
+    def test_status_bar_layout_single_forces_one_line_on_wide_terminal(self, monkeypatch):
+        _set_language(monkeypatch, None)
+        cli_obj = _attach_agent(
+            _make_cli(),
+            prompt_tokens=10_230,
+            completion_tokens=2_220,
+            total_tokens=12_450,
+            api_calls=7,
+            context_tokens=12_450,
+            context_length=200_000,
+        )
+        cli_obj.config = {"display": {"status_bar_layout": "single"}}
+
+        text = cli_obj._build_status_bar_text(width=120)
+
+        assert len(text.splitlines()) == 1
+
+    def test_status_bar_layout_double_forces_two_lines_on_wide_terminal(self, monkeypatch):
+        _set_language(monkeypatch, None)
+        cli_obj = _attach_agent(
+            _make_cli(),
+            prompt_tokens=10_230,
+            completion_tokens=2_220,
+            total_tokens=12_450,
+            api_calls=7,
+            context_tokens=12_450,
+            context_length=200_000,
+        )
+        cli_obj.config = {"display": {"status_bar_layout": "double"}}
+
+        text = cli_obj._build_status_bar_text(width=120)
+
+        assert len(text.splitlines()) == 2
+
     def test_build_status_bar_text_handles_missing_agent(self):
         cli_obj = _make_cli()
 

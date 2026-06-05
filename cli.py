@@ -468,6 +468,7 @@ def load_cli_config() -> Dict[str, Any]:
             "busy_input_mode": "interrupt",
             "persistent_output": True,
             "persistent_output_max_lines": 200,
+            "status_bar_layout": "auto",
 
             "skin": "default",
         },
@@ -4412,6 +4413,15 @@ class HermesCLI:
         except Exception:
             return 1
 
+    def _status_bar_layout_mode(self) -> str:
+        """Return the configured status bar layout mode: auto, single, or double."""
+        try:
+            display_cfg = (getattr(self, "config", {}) or {}).get("display") or {}
+            raw = str(display_cfg.get("status_bar_layout", "auto") or "auto").strip().lower()
+        except Exception:
+            raw = "auto"
+        return raw if raw in {"auto", "single", "double"} else "auto"
+
     def _render_spinner_text(self) -> str:
         """Return the live spinner/status text exactly as rendered in the TUI."""
         txt = getattr(self, "_spinner_text", "")
@@ -4497,6 +4507,7 @@ class HermesCLI:
             if width is None:
                 width = self._get_tui_terminal_width()
             width = max(1, int(width or 1))
+            layout_mode = self._status_bar_layout_mode()
             percent = snapshot["context_percent"]
             percent_label = f"{percent}%" if percent is not None else "--"
             duration_label = snapshot["duration"]
@@ -4593,6 +4604,11 @@ class HermesCLI:
                     detail_parts.append(f"⚙ {bg_proc_count}")
                 if yolo_active:
                     detail_parts.append(t("status_bar.yolo", lang=get_language()))
+                if layout_mode == "single":
+                    single_parts = header_parts + detail_parts
+                    return self._merge_status_bar_line_groups([
+                        self._wrap_status_bar_parts(single_parts, " · ", width),
+                    ], width, line_separator=" · ")
                 return self._join_status_bar_line_groups([
                     self._wrap_status_bar_parts(header_parts, " · ", width),
                     self._wrap_status_bar_parts(detail_parts, " · ", width),
@@ -4618,6 +4634,16 @@ class HermesCLI:
                 detail_parts.append(t("status_bar.yolo", lang=get_language()))
             if not detail_parts and token_summary_compact:
                 detail_parts.append(token_summary_compact)
+            if layout_mode == "single":
+                single_parts = header_parts + ([account_usage_label] if account_usage_label and account_usage_bits else [])
+                if token_summary_compact:
+                    single_parts.extend(token_summary_compact.split(" · "))
+                for extra_part in detail_parts[1:]:
+                    if extra_part != token_summary_compact:
+                        single_parts.append(extra_part)
+                return self._merge_status_bar_line_groups([
+                    self._wrap_status_bar_parts(single_parts, " · ", width),
+                ], width, line_separator=" · ")
             return self._join_status_bar_line_groups([
                 self._wrap_status_bar_parts(header_parts, " │ ", width),
                 self._wrap_status_bar_parts(detail_parts, " │ ", width),
