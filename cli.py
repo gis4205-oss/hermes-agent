@@ -458,6 +458,7 @@ def load_cli_config() -> Dict[str, Any]:
             "busy_input_mode": "interrupt",
             "persistent_output": True,
             "persistent_output_max_lines": 200,
+            "status_bar_layout": "auto",
 
             "skin": "default",
         },
@@ -3878,6 +3879,15 @@ class HermesCLI:
             return max(1, math.ceil(text_width / width))
         return 1
 
+    def _status_bar_layout_mode(self) -> str:
+        """Return the configured status bar layout mode: auto, single, or double."""
+        try:
+            display_cfg = (getattr(self, "config", {}) or {}).get("display") or {}
+            raw = str(display_cfg.get("status_bar_layout", "auto") or "auto").strip().lower()
+        except Exception:
+            raw = "auto"
+        return raw if raw in {"auto", "single", "double"} else "auto"
+
     def _render_spinner_text(self) -> str:
         """Return the live spinner/status text exactly as rendered in the TUI."""
         txt = getattr(self, "_spinner_text", "")
@@ -3952,11 +3962,13 @@ class HermesCLI:
         return [("class:voice-status", f" 🎤 Voice mode{tts}{cont}  —  {label} to record ")]
 
     def _build_status_bar_text(self, width: Optional[int] = None) -> str:
-        """Return a compact one-line session status string for the TUI footer."""
+        """Return a compact status string for the TUI footer."""
         try:
             snapshot = self._get_status_bar_snapshot()
             if width is None:
                 width = self._get_tui_terminal_width()
+            width = max(1, int(width or 1))
+            layout_mode = self._status_bar_layout_mode()
             percent = snapshot["context_percent"]
             percent_label = f"{percent}%" if percent is not None else "--"
             duration_label = snapshot["duration"]
@@ -3991,22 +4003,24 @@ class HermesCLI:
                 context_label = t("status_bar.context_unknown", lang=get_language())
 
             compressions = snapshot.get("compressions", 0)
-            parts = [f"⚕ {snapshot['model_short']}", context_label, percent_label]
-            if compressions:
-                parts.append(f"🗜️ {compressions}")
+            header_parts = [f"⚕ {snapshot['model_short']}", context_label, percent_label]
+            detail_parts = [duration_label]
             bg_count = snapshot.get("active_background_tasks", 0)
-            if bg_count:
-                parts.append(f"▶ {bg_count}")
             bg_proc_count = snapshot.get("active_background_processes", 0)
+            if compressions:
+                detail_parts.append(f"🗜️ {compressions}")
+            if bg_count:
+                detail_parts.append(f"▶ {bg_count}")
             if bg_proc_count:
-                parts.append(f"⚙ {bg_proc_count}")
-            parts.append(duration_label)
+                detail_parts.append(f"⚙ {bg_proc_count}")
             prompt_elapsed = snapshot.get("prompt_elapsed")
             if prompt_elapsed:
-                parts.append(prompt_elapsed)
+                detail_parts.append(prompt_elapsed)
             if yolo_active:
-                parts.append(t("status_bar.yolo", lang=get_language()))
-            return self._trim_status_bar_text(" │ ".join(parts), width)
+                detail_parts.append(t("status_bar.yolo", lang=get_language()))
+            if layout_mode == "double":
+                return " │ ".join(header_parts) + "\n" + " │ ".join(detail_parts)
+            return self._trim_status_bar_text(" │ ".join(header_parts + detail_parts), width)
         except Exception:
             return f"⚕ {self.model if getattr(self, 'model', None) else 'Hermes'}"
 
@@ -4014,6 +4028,8 @@ class HermesCLI:
         if not self._status_bar_visible or getattr(self, '_model_picker_state', None):
             return []
         try:
+            if self._status_bar_layout_mode() == "double":
+                return [("class:status-bar", f" {self._build_status_bar_text(width=self._get_tui_terminal_width())} ")]
             snapshot = self._get_status_bar_snapshot()
             # Use prompt_toolkit's own terminal width when running inside the
             # TUI — shutil.get_terminal_size() can return stale or fallback
